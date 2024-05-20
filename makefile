@@ -3,13 +3,10 @@ all:
 	gcc chip8.c -o chip8 $(CFLAGS) `sdl2-config --cflags --libs`
 
 debug:
-	gcc chip8.c -o chip8-debug $(CFLAGS) `sdl2-config --cflags --libs` -DDEBUG
+	gcc chip8.c -o chip8-debug $(CFLAGS) `sdl2-config --cflags --libs` -g -DDEBUG
 
-# CFLAGS=-std=c17 -Wall -Wextra -Werror -D_REENTRANT
-# SDLFLAGS=`sdl2-config --cflags --libs`
+old:
+	gcc old_chip8.c -o old $(CFLAGS) `sdl2-config --cflags --libs` -DDEBUG
 
-# all:
-#     gcc chip8.c -o chip8 $(CFLAGS) $(SDLFLAGS)
-
-# debug:
-#     gcc chip8.c -o chip8-debug $(CFLAGS) $(SDLFLAGS) -DDEBUG
+edwin:
+	gcc edwin.c -o edwin $(CFLAGS) `sdl2-config --cflags --libs` -DDEBUG
