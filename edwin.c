@@ -90,7 +90,7 @@ bool init_config(config_t *config, const int argc, char **argv) {
         .window_height = 32,
         .fg_color = 0xFFFFFFFF,
         .bg_color = 0x00000000,
-        .scale_factor = 20,
+        .scale_factor = 30,
         .pixel_outlines = true,
         .insts_per_second = 600,
     };
@@ -740,7 +740,6 @@ void emulate_instruction(chip8_t *chip8, const config_t config) {
                 if (++Y_coord >= config.window_height) break;
             }
             break;
-
         }
             
         case 0x0E:

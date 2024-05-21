@@ -2,16 +2,16 @@
 triple:          'arm64-apple-darwin'
 binary-path:     chip8-debug
 relocations:
-  - { offsetInCU: 0x26, offset: 0x26, size: 0x8, addend: 0x0, symName: _init_SDL, symObjAddr: 0x0, symBinAddr: 0x100003EA4, symSize: 0x164 }
-  - { offsetInCU: 0x70F, offset: 0x70F, size: 0x8, addend: 0x0, symName: _init_SDL, symObjAddr: 0x0, symBinAddr: 0x100003EA4, symSize: 0x164 }
-  - { offsetInCU: 0x746, offset: 0x746, size: 0x8, addend: 0x0, symName: _init_config_from_args, symObjAddr: 0x164, symBinAddr: 0x100004008, symSize: 0xA4 }
-  - { offsetInCU: 0x7A6, offset: 0x7A6, size: 0x8, addend: 0x0, symName: _init_chip8, symObjAddr: 0x208, symBinAddr: 0x1000040AC, symSize: 0x260 }
-  - { offsetInCU: 0x829, offset: 0x829, size: 0x8, addend: 0x0, symName: _clear_screen, symObjAddr: 0x468, symBinAddr: 0x10000430C, symSize: 0xAC }
-  - { offsetInCU: 0x894, offset: 0x894, size: 0x8, addend: 0x0, symName: _update_screen, symObjAddr: 0x514, symBinAddr: 0x1000043B8, symSize: 0x1D8 }
-  - { offsetInCU: 0x970, offset: 0x970, size: 0x8, addend: 0x0, symName: _final_clean_up, symObjAddr: 0x6EC, symBinAddr: 0x100004590, symSize: 0x34 }
-  - { offsetInCU: 0x994, offset: 0x994, size: 0x8, addend: 0x0, symName: _process_events, symObjAddr: 0x720, symBinAddr: 0x1000045C4, symSize: 0x44C }
-  - { offsetInCU: 0x9C6, offset: 0x9C6, size: 0x8, addend: 0x0, symName: _print_debug_info, symObjAddr: 0xE14, symBinAddr: 0x100004CB8, symSize: 0x1194 }
-  - { offsetInCU: 0x9EC, offset: 0x9EC, size: 0x8, addend: 0x0, symName: _emulate_instruction, symObjAddr: 0x2024, symBinAddr: 0x100005EC8, symSize: 0x10E4 }
-  - { offsetInCU: 0xB8E, offset: 0xB8E, size: 0x8, addend: 0x0, symName: _update_timer, symObjAddr: 0x3148, symBinAddr: 0x100006FEC, symSize: 0x8C }
-  - { offsetInCU: 0xBB4, offset: 0xBB4, size: 0x8, addend: 0x0, symName: _main, symObjAddr: 0x31D4, symBinAddr: 0x100007078, symSize: 0x2EC }
+  - { offsetInCU: 0x26, offset: 0x26, size: 0x8, addend: 0x0, symName: _init_SDL, symObjAddr: 0x0, symBinAddr: 0x100003E6C, symSize: 0x16C }
+  - { offsetInCU: 0x70F, offset: 0x70F, size: 0x8, addend: 0x0, symName: _init_SDL, symObjAddr: 0x0, symBinAddr: 0x100003E6C, symSize: 0x16C }
+  - { offsetInCU: 0x745, offset: 0x745, size: 0x8, addend: 0x0, symName: _init_config_from_args, symObjAddr: 0x16C, symBinAddr: 0x100003FD8, symSize: 0xA4 }
+  - { offsetInCU: 0x7A5, offset: 0x7A5, size: 0x8, addend: 0x0, symName: _init_chip8, symObjAddr: 0x210, symBinAddr: 0x10000407C, symSize: 0x260 }
+  - { offsetInCU: 0x828, offset: 0x828, size: 0x8, addend: 0x0, symName: _clear_screen, symObjAddr: 0x470, symBinAddr: 0x1000042DC, symSize: 0xAC }
+  - { offsetInCU: 0x893, offset: 0x893, size: 0x8, addend: 0x0, symName: _update_screen, symObjAddr: 0x51C, symBinAddr: 0x100004388, symSize: 0x1D8 }
+  - { offsetInCU: 0x96F, offset: 0x96F, size: 0x8, addend: 0x0, symName: _final_clean_up, symObjAddr: 0x6F4, symBinAddr: 0x100004560, symSize: 0x34 }
+  - { offsetInCU: 0x993, offset: 0x993, size: 0x8, addend: 0x0, symName: _process_events, symObjAddr: 0x728, symBinAddr: 0x100004594, symSize: 0x44C }
+  - { offsetInCU: 0x9C5, offset: 0x9C5, size: 0x8, addend: 0x0, symName: _print_debug_info, symObjAddr: 0xE1C, symBinAddr: 0x100004C88, symSize: 0x1188 }
+  - { offsetInCU: 0x9EB, offset: 0x9EB, size: 0x8, addend: 0x0, symName: _emulate_instruction, symObjAddr: 0x2020, symBinAddr: 0x100005E8C, symSize: 0x10E4 }
+  - { offsetInCU: 0xB8D, offset: 0xB8D, size: 0x8, addend: 0x0, symName: _update_timer, symObjAddr: 0x3144, symBinAddr: 0x100006FB0, symSize: 0x8C }
+  - { offsetInCU: 0xBB3, offset: 0xBB3, size: 0x8, addend: 0x0, symName: _main, symObjAddr: 0x31D0, symBinAddr: 0x10000703C, symSize: 0x2F8 }
 ...

@@ -10,3 +10,6 @@ old:
 
 edwin:
 	gcc edwin.c -o edwin $(CFLAGS) `sdl2-config --cflags --libs` -DDEBUG
+
+author:
+	gcc author.c -o author $(CFLAGS) `sdl2-config --cflags --libs` -DDEBUG
