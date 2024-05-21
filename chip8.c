@@ -7,16 +7,22 @@
 typedef struct {
     SDL_Window* window;
     SDL_Renderer* renderer;
+    SDL_AudioSpec want, have;
+    SDL_AudioDeviceID devID;
 } sdl_t;
 
 typedef struct {
-    uint32_t window_width;     // SDL Window Width
-    uint32_t window_height;    // SDL window Height
-    uint32_t fg_color;         // foreground color RGBA8888
-    uint32_t bg_color;         // background color RGBA8888
+    uint32_t window_width;      // SDL Window Width
+    uint32_t window_height;     // SDL window Height
+    uint32_t fg_color;          // foreground color RGBA8888
+    uint32_t bg_color;          // background color RGBA8888
     uint32_t scale_factor;
     bool pixel_outlines;        // Draw pixel "outlines" yes/no
-    uint32_t insts_per_second; // CHIP8 CPU "clock rate" or hz
+    uint32_t insts_per_second;  // CHIP8 CPU "clock rate" or hz
+    uint32_t square_wave_freq;  // Frequency of square wave sound e.g. 440hz for middle A
+    uint32_t audio_sample_rate;
+    int16_t volume;             // How loud or not
+    float color_lerp_rate;      // Amount to lerp colors by, between [0.1, 1.0]
 } config_t;
 
 typedef enum {
@@ -40,19 +46,63 @@ typedef struct {
     emulator_state_t state;
     uint8_t ram[4096];        
     bool display[64 * 32];     //Emulate the original Chip8 resolution
-    uint16_t stack[12];       //Subroutine stack
-    uint16_t *stack_ptr;      //Stack pointer
-    uint8_t V[16];            //Data registers V0-VF
-    uint16_t I;               //Index registers
-    uint16_t PC;              //Program Counter
-    uint8_t delay_timer;      //Decrements at 60hz when > 0
-    uint8_t sound_timer;      //Decrements at 60hz and plays tone when > 0
+    uint32_t pixel_color[64 * 32];     // CHIP8 pixel colors to draw 
+    uint16_t stack[12];        //Subroutine stack
+    uint16_t *stack_ptr;       //Stack pointer
+    uint8_t V[16];             //Data registers V0-VF
+    uint16_t I;                //Index registers
+    uint16_t PC;               //Program Counter
+    uint8_t delay_timer;       //Decrements at 60hz when > 0
+    uint8_t sound_timer;       //Decrements at 60hz and plays tone when > 0
     bool keypad[16];           //Hexadecimal keypad 0x0 - 0xF
     const char *rom_name;      //Currently running ROM
     instruction_t inst;        //Currently executing instructions
+    bool draw;                 // Update the screen yes/no
 } chip8_t;
 
-bool init_SDL(sdl_t* sdl, const config_t *config) {
+// Color "lerp" helper function
+uint32_t color_lerp(const uint32_t start_color, const uint32_t end_color, const float t) {
+    const uint8_t s_r = (start_color >> 24) & 0xFF;
+    const uint8_t s_g = (start_color >> 16) & 0xFF;
+    const uint8_t s_b = (start_color >>  8) & 0xFF;
+    const uint8_t s_a = (start_color >>  0) & 0xFF;
+
+    const uint8_t e_r = (end_color >> 24) & 0xFF;
+    const uint8_t e_g = (end_color >> 16) & 0xFF;
+    const uint8_t e_b = (end_color >>  8) & 0xFF;
+    const uint8_t e_a = (end_color >>  0) & 0xFF;
+
+    const uint8_t ret_r = ((1-t)*s_r) + (t*e_r);
+    const uint8_t ret_g = ((1-t)*s_g) + (t*e_g);
+    const uint8_t ret_b = ((1-t)*s_b) + (t*e_b);
+    const uint8_t ret_a = ((1-t)*s_a) + (t*e_a);
+
+    return (ret_r << 24) | (ret_g << 16) | (ret_b << 8) | ret_a;
+}
+
+
+//SDL Audio Callback
+void audio_callback(void* userdata, uint8_t* stream, int len) {
+    config_t* config = (config_t*) userdata;
+
+    int16_t* audio_data = (int16_t*) stream;
+    static uint32_t running_sample_index = 0;
+    const int32_t square_wave_period = config->audio_sample_rate / config->square_wave_freq;   // hz / freq = period
+    const int32_t half_square_wave_period = square_wave_period / 2;
+
+    // We are filling out 2 bytes at a time (int16_t), len is in bytes,
+    //   so divide by 2
+    // If the current chunk of audio for the square wave is the crest of the wave, 
+    //   this will add the volume, otherwise it is the trough of the wave, and will add
+    //   "negative" volume
+    for (int i = 0; i < len / 2; i ++) {
+        audio_data[i] = ((running_sample_index++ / half_square_wave_period) % 2) ? 
+                        config->volume : 
+                        -config->volume;
+    }
+}
+
+bool init_SDL(sdl_t* sdl, config_t *config) {
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_TIMER) != 0 ){
         SDL_Log("Could not initialize SDL subsystem! %s\n", SDL_GetError());
         return false;
@@ -72,6 +122,30 @@ bool init_SDL(sdl_t* sdl, const config_t *config) {
         return false;
     }
 
+    sdl->want = (SDL_AudioSpec){
+        .freq = 44100,              //44100hz "CD" quality
+        .format = AUDIO_S16LSB,     //Signed 16 bit little endian 
+        .channels = 1,               //Mono 1 channel
+        .samples = 4096,            
+        .callback = audio_callback,
+        .userdata = config,        //Userdata passed to audio callback
+    };
+
+    sdl->devID = SDL_OpenAudioDevice(NULL, 0, &sdl->want, &sdl->have, 0);
+
+    if (sdl->devID == 0) {
+        SDL_Log("Could not get an Audio Device %s\n", SDL_GetError());
+        return false;
+    }
+
+    if ((sdl->want.format != sdl->have.format) 
+            || (sdl->want.channels != sdl->have.channels)) {
+        SDL_Log("Could not get desired Audio Spec %s\n", SDL_GetError());
+        return false;
+    }
+
+
+
     return true;
 }
 
@@ -79,13 +153,17 @@ bool init_SDL(sdl_t* sdl, const config_t *config) {
 bool init_config_from_args(config_t* config, const int argc, char** argv) {
     //*config = (config_t) {64, 32, 0xFFFFFFFF, 0x00000000, 30, true, 500};
     *config = (config_t) {
-        .window_width = 64,       //CHIP8 origuinal X resolution
-        .window_height = 32,      //CHIP8 origuinal Y resolution
+        .window_width = 64,         //CHIP8 origuinal X resolution
+        .window_height = 32,        //CHIP8 origuinal Y resolution
         .fg_color = 0xFFFFFFFF,
-        .bg_color = 0x00000000, // Correct color for yellow
+        .bg_color = 0x00000000,     // Correct color for yellow
         .scale_factor = 20,
         .pixel_outlines = true,
-        .insts_per_second = 600, // Number of instructions to emulate in 1 second (clock rate of CPU)
+        .insts_per_second = 600,    // Number of instructions to emulate in 1 second (clock rate of CPU)
+        .square_wave_freq = 440,    // 440hz for middle A
+        .audio_sample_rate = 44100, // CD quality, 44100hz
+        .volume = 3000,             // INT16_MAX would be max volume
+        .color_lerp_rate = 0.7,
     };
     for (int i = 1; i < argc; i++) {
         (void)argv[i];
@@ -93,7 +171,7 @@ bool init_config_from_args(config_t* config, const int argc, char** argv) {
     return true;
 }
 
-bool init_chip8(chip8_t* chip8, const char rom_name[]) {
+bool init_chip8(chip8_t* chip8,config_t* config, const char rom_name[]) {
     const uint16_t entry_point = 0x200;   //Chip8 ROM will be loaded to 0x200
     const uint8_t font[] = {
         0xF0, 0x90, 0x90, 0x90, 0xF0, // 0
@@ -113,6 +191,8 @@ bool init_chip8(chip8_t* chip8, const char rom_name[]) {
         0xF0, 0x80, 0xF0, 0x80, 0xF0, // E
         0xF0, 0x80, 0xF0, 0x80, 0x80  // F
     };
+
+    memset(chip8, 0, sizeof(chip8_t));
 
     //load Font
     memcpy(&chip8->ram, font, sizeof(font));
@@ -146,6 +226,7 @@ bool init_chip8(chip8_t* chip8, const char rom_name[]) {
     chip8->PC = entry_point;
     chip8->rom_name = rom_name;
     chip8->stack_ptr = &chip8->stack[0]; //or &chip8->stack[0]
+    memset(chip8->pixel_color, config->bg_color, sizeof chip8->pixel_color);
     return true;
 }
 
@@ -164,31 +245,35 @@ void clear_screen(const sdl_t sdl, const config_t config) {
 
 
 
-void update_screen(const sdl_t sdl, const config_t config, const chip8_t chip8) {
+void update_screen(const sdl_t sdl, const config_t config, chip8_t* chip8) {
     SDL_Rect rect = {.x = 0, .y = 0, .w = config.scale_factor, .h = config.scale_factor};
 
     //Grab color value to draw
-    const uint8_t fg_r = (config.fg_color >> 24) & 0xFF;
-    const uint8_t fg_g = (config.fg_color >> 16) & 0xFF;
-    const uint8_t fg_b = (config.fg_color >> 8) & 0xFF;
-    const uint8_t fg_a = (config.fg_color & 0xFF);
-
     const uint8_t bg_r = (config.bg_color >> 24) & 0xFF;
     const uint8_t bg_g = (config.bg_color >> 16) & 0xFF;
     const uint8_t bg_b = (config.bg_color >> 8) & 0xFF;
     const uint8_t bg_a = (config.bg_color & 0xFF);
 
     //loop through display pixels, draw a rectangle per pixel to the SDL window.
-    for (uint32_t i = 0; i < sizeof chip8.display; i++) {
+    for (uint32_t i = 0; i < sizeof chip8->display; i++) {
         //Translate 1D index value i to 2D X/Y coordinates
         //X = i % window width
         //Y = i / window width
         rect.x = (i % config.window_width) * config.scale_factor;
         rect.y = (i / config.window_width) * config.scale_factor;
 
-        if (chip8.display[i]) {
+        if (chip8->display[i]) {
+            if (chip8->pixel_color[i] != config.fg_color) {
+                chip8->pixel_color[i] = color_lerp(chip8->pixel_color[i], config.fg_color, config.color_lerp_rate);
+            }
+
+            const uint8_t r = (chip8->pixel_color[i] >> 24) & 0xFF;
+            const uint8_t g = (chip8->pixel_color[i] >> 16) & 0xFF;
+            const uint8_t b = (chip8->pixel_color[i] >>  8) & 0xFF;
+            const uint8_t a = (chip8->pixel_color[i] >>  0) & 0xFF;
+
             //Pixel is on, draw foreground color
-            SDL_SetRenderDrawColor(sdl.renderer, fg_r, fg_g, fg_b, fg_a);
+            SDL_SetRenderDrawColor(sdl.renderer, r, g, b, a);
             SDL_RenderFillRect(sdl.renderer, &rect);
 
             // If user requested drawing pixel outlines, draw those here
@@ -198,23 +283,21 @@ void update_screen(const sdl_t sdl, const config_t config, const chip8_t chip8) 
             }
         } else {
             //Pixel is off, draw background color
-            SDL_SetRenderDrawColor(sdl.renderer, bg_r, bg_g, bg_b, bg_a);
-            SDL_RenderFillRect(sdl.renderer, &rect);
+            if (chip8->pixel_color[i] != config.bg_color) {
+                chip8->pixel_color[i] = color_lerp(chip8->pixel_color[i], config.bg_color, config.color_lerp_rate);
+            }
 
+            const uint8_t r = (chip8->pixel_color[i] >> 24) & 0xFF;
+            const uint8_t g = (chip8->pixel_color[i] >> 16) & 0xFF;
+            const uint8_t b = (chip8->pixel_color[i] >>  8) & 0xFF;
+            const uint8_t a = (chip8->pixel_color[i] >>  0) & 0xFF;
+
+            //Pixel is on, draw foreground color
+            SDL_SetRenderDrawColor(sdl.renderer, r, g, b, a);
+            SDL_RenderFillRect(sdl.renderer, &rect);
         }
     }
     SDL_RenderPresent(sdl.renderer);
-}
-
-
-
-
-
-
-void final_clean_up(sdl_t sdl) {
-    SDL_DestroyRenderer(sdl.renderer);
-    SDL_DestroyWindow(sdl.window);
-    SDL_Quit();
 }
 
 // Handle user input
@@ -223,13 +306,13 @@ void final_clean_up(sdl_t sdl) {
 // 456D          qwer
 // 789E          asdf
 // A0BF          zxcv
-void process_events(chip8_t *chip8) {
+void process_events(config_t *config, chip8_t *chip8) {
     SDL_Event event;
     while (SDL_PollEvent(&event)) { //any event (operation) is automatically added at the backend the SDL pulls it out
         switch (event.type) {
             case SDL_QUIT:
                 chip8->state = QUIT;
-                return;
+                break;
             case SDL_KEYUP:
                 switch (event.key.keysym.sym) { //The sym member of SDL_Keysym is an SDL_Keycode value that represents the specific key that was pressed or released.
                     // Map qwerty keys to CHIP8 keypad
@@ -261,7 +344,7 @@ void process_events(chip8_t *chip8) {
                     case SDLK_ESCAPE:
                         //escape key, Exit window & End program
                         chip8->state = QUIT; 
-                        return;
+                        break;
                     case SDLK_SPACE: 
                         if (chip8->state == RUNNING) {
                             chip8->state = PAUSED;   // Pause
@@ -271,7 +354,12 @@ void process_events(chip8_t *chip8) {
                             chip8->state = RUNNING; // Resume
                             
                         }
-                        return;
+                        break;
+
+                    case SDLK_EQUALS:
+                        // '=': Reset CHIP8 machine for the current ROM
+                        init_chip8(chip8, config, chip8->rom_name);
+                        break;
 
                     //Map QWERTY keys to CHIP8 keypad
                     case SDLK_1: chip8->keypad[0x1] = true; break;
@@ -593,6 +681,7 @@ void emulate_instruction(chip8_t* chip8, config_t config) {
             if (chip8->inst.NN == 0xE0) {
                 //0x00E0: Clear the screen 
                 memset(&chip8->display[0], false, sizeof chip8->display);
+                chip8->draw = true;         // Will update screen on next 60hz tick
             } else if (chip8->inst.NN == 0xEE) {
                 //0x00EE: Return from subroutine 
                 //Set program counter to last address on subroutine stack ("pop" it off the stack)
@@ -765,6 +854,7 @@ void emulate_instruction(chip8_t* chip8, config_t config) {
                 //Stop drawing entire sprite if hit bottom edge of screen
                 if (++Y_coord >= config.window_height) break;
             }
+            chip8->draw = true;         // Will update screen on next 60hz tick
             break;
         }
 
@@ -816,8 +906,8 @@ void emulate_instruction(chip8_t* chip8, config_t config) {
                     break;
 
                 case 0x18:
-                    // 0xFX18: VX = sound timer
-                    chip8->V[chip8->inst.X] = chip8->sound_timer;
+                    // 0xFX18: sound timer = VX
+                   chip8->sound_timer =  chip8->V[chip8->inst.X];
                     break;
 
                 case 0x29:
@@ -861,17 +951,24 @@ void emulate_instruction(chip8_t* chip8, config_t config) {
 }
 
 
-void update_timer(chip8_t *chip8) {
+void update_timer(sdl_t sdl, chip8_t *chip8) {
     if (chip8->delay_timer > 0) {
         chip8->delay_timer--;
     }
 
     if (chip8->sound_timer > 0) {
         chip8->sound_timer--;
-        // TODO:
+        SDL_PauseAudioDevice(sdl.devID, 0);   //play the sound 
     } else {
-
+        SDL_PauseAudioDevice(sdl.devID, 1);   //pause the sound
     }
+}
+
+void final_clean_up(sdl_t sdl) {
+    SDL_DestroyRenderer(sdl.renderer);
+    SDL_DestroyWindow(sdl.window);
+    SDL_CloseAudioDevice(sdl.devID);
+    SDL_Quit();
 }
 
 
@@ -889,12 +986,10 @@ int main(int argc, char** argv) {
     sdl_t sdl = {0};
     if (!init_SDL(&sdl, &config)) exit(EXIT_FAILURE);
 
-    printf("Bool size is %lu\n", sizeof(bool));
-
     //Initialized Chip 8 Machine
     chip8_t chip8 = {0};
     const char* rom_name = argv[1];
-    if (!init_chip8(&chip8, rom_name)) exit(EXIT_FAILURE);
+    if (!init_chip8(&chip8, &config, rom_name)) exit(EXIT_FAILURE);
 
     clear_screen(sdl, config); // Keep this here if the display should continually update
 
@@ -903,9 +998,7 @@ int main(int argc, char** argv) {
 
     //main emulator loop
     while (chip8.state != QUIT) {
-        
-
-        process_events(&chip8);
+        process_events(&config, &chip8);
         if (chip8.state == PAUSED) continue;
         //Get_time();
 
@@ -918,17 +1011,18 @@ int main(int argc, char** argv) {
 
         const u_int64_t end_frame_time = SDL_GetPerformanceCounter();
 
-        const double time_elapsed = (double) (((end_frame_time - star_frame_time) / 1000) / SDL_GetPerformanceFrequency());
+        const double time_elapsed = (double) (((end_frame_time - star_frame_time) * 1000) / SDL_GetPerformanceFrequency());
         
         SDL_Delay(16.67f > time_elapsed ? 16.67f - time_elapsed : 0); // Control frame rate
 
         
         // Update window with changes every 60hz
-        update_screen(sdl, config, chip8);
-       
+        if (chip8.draw) {
+            update_screen(sdl, config, &chip8);
+        }
 
         // Update delay & sound timers every 60hz
-        update_timer(&chip8);
+        update_timer(sdl, &chip8);
     }
 
 
