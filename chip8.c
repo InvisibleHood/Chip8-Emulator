@@ -690,6 +690,7 @@ void print_debug_info(chip8_t* chip8) {
 
 void emulate_instruction(chip8_t* chip8, config_t config) {
     //Get next opcode from RAM
+    bool carry;
     chip8->inst.opcode = (chip8->ram[chip8->PC] << 8) | (chip8->ram[chip8->PC + 1]);
     chip8->PC += 2;
 
@@ -774,14 +775,18 @@ void emulate_instruction(chip8_t* chip8, config_t config) {
             } else if (chip8->inst.N == 1) {
                 // 0x8XY1 Sets VX to VX or VY. (bitwise OR operation)
                 chip8->V[chip8->inst.X] |= chip8->V[chip8->inst.Y];
+                chip8->V[0xF] = 0;
             } else if (chip8->inst.N == 2) {
                 // 0x8XY2 Sets VX to VX and VY. (bitwise AND operation)
                 chip8->V[chip8->inst.X] &= chip8->V[chip8->inst.Y];
+                chip8->V[0xF] = 0;
             } else if (chip8->inst.N == 3) {
                 // 0x8XY3 Sets VX to VX xor VY
                 chip8->V[chip8->inst.X] ^= chip8->V[chip8->inst.Y];
+                chip8->V[0xF] = 0;
             } else if (chip8->inst.N == 4) {
                 // 0x8XY4 Adds VY to VX. VF is set to 1 when there's an overflow, and to 0 when there is not
+                //printf("Chip8 VX value is %u, ");
                 uint8_t orig_X = chip8->V[chip8->inst.X];
                 chip8->V[chip8->inst.X] += chip8->V[chip8->inst.Y];
                 if (orig_X > chip8->V[chip8->inst.X]) { //overflow
@@ -789,30 +794,35 @@ void emulate_instruction(chip8_t* chip8, config_t config) {
                 } else {
                     chip8->V[0xF] = 0;
                 }
+                printf("VX: 0x%X \n", chip8->inst.X);
             } else if (chip8->inst.N == 5) {
                 // 0x8XY5 VY is subtracted from VX. VF is set to 0 when there's an underflow, and 1 when there is not. (i.e. VF set to 1 if VX >= VY and 0 if not)
                 if (chip8->V[chip8->inst.X] >= chip8->V[chip8->inst.Y]) {
+                    chip8->V[chip8->inst.X] -= chip8->V[chip8->inst.Y];
                     chip8->V[0xF] = 1;
                 } else {
+                    chip8->V[chip8->inst.X] -= chip8->V[chip8->inst.Y];  //the order has to be before the chip8->V[0xF] = 0;
                     chip8->V[0xF] = 0;
                 }
-                chip8->V[chip8->inst.X] -= chip8->V[chip8->inst.Y];
             } else if (chip8->inst.N == 6) {
                 // 0x8XY6 Stores the least significant bit of VX in VF and then shifts VX to the right by 1
-                chip8->V[0xF] = chip8->V[chip8->inst.X] & 0x01;
-                chip8->V[chip8->inst.X] = chip8->V[chip8->inst.X] >> 1;
+                carry = chip8->V[chip8->inst.Y] & 0x01;
+                chip8->V[chip8->inst.X] = chip8->V[chip8->inst.Y] >> 1;
+                chip8->V[0xF] = carry;
             } else if (chip8->inst.N == 7) {
                 // 0x8XY7 Sets VX to VY minus VX. VF is set to 0 when there's an underflow, and 1 when there is not. (i.e. VF set to 1 if VY >= VX)
                 if (chip8->V[chip8->inst.Y] >= chip8->V[chip8->inst.X]) {
+                    chip8->V[chip8->inst.X] = chip8->V[chip8->inst.Y] - chip8->V[chip8->inst.X];
                     chip8->V[0xF] = 1;
                 } else {
+                    chip8->V[chip8->inst.X] = chip8->V[chip8->inst.Y] - chip8->V[chip8->inst.X];
                     chip8->V[0xF] = 0;
                 }
-                chip8->V[chip8->inst.X] = chip8->V[chip8->inst.Y] - chip8->V[chip8->inst.X];
             } else if (chip8->inst.N == 0xE) {
                 // 0x8XYE Sets VX to VY minus VX. VF is set to 0 when there's an underflow, and 1 when there is not. (i.e. VF set to 1 if VY >= VX)
-                chip8->V[0xF] = chip8->V[chip8->inst.X] >> 7; 
-                chip8->V[chip8->inst.X] = chip8->V[chip8->inst.X] << 1;
+                carry = chip8->V[chip8->inst.Y] >> 7; 
+                chip8->V[chip8->inst.X] = chip8->V[chip8->inst.Y] << 1;
+                chip8->V[0xF] = carry;
             } else {
                 printf("Umimplemented/Invalid Opcode for 0x08.\n");
             }
@@ -905,16 +915,32 @@ void emulate_instruction(chip8_t* chip8, config_t config) {
         case 0x0F:
             switch (chip8->inst.NN) {
                 case 0x0A: {
-                    bool any_key_pressed = false;   
-                    for (size_t i = 0; i < sizeof chip8->keypad; i++) {
+                    static bool any_key_pressed = false;   
+                    static uint8_t pressed_key = 0xFF;
+                    for (uint8_t i = 0; i < sizeof chip8->keypad; i++) {
                         if (chip8->keypad[i]) {
-                            chip8->V[chip8->inst.X] = i;
+                            pressed_key = i;
                             any_key_pressed = true;
                             break;
                         }
                     }
 
-                    if (!any_key_pressed) {
+                    // if (!any_key_pressed) {
+                    //     chip8->PC -= 2;
+                    // } else {
+                    //     if (chip8->keypad[pressed_key]) {
+                    //         chip8->PC -= 2;
+                    //     } else {
+                    //         chip8->V[chip8->inst.X] = pressed_key;
+                    //         pressed_key = 0xFF;
+                    //         any_key_pressed = false;
+                    //     }
+                    // }
+                    if (any_key_pressed && !chip8->keypad[pressed_key]) {
+                            chip8->V[chip8->inst.X] = pressed_key;
+                            pressed_key = 0xFF;
+                            any_key_pressed = false;
+                    } else {
                         chip8->PC -= 2;
                     }
                     break;
@@ -959,12 +985,14 @@ void emulate_instruction(chip8_t* chip8, config_t config) {
                     for (size_t i = 0; i <= chip8->inst.X; i++) {
                         chip8->ram[chip8->I + i] = chip8->V[i];
                     }
+                    chip8->I += chip8->inst.X + 1;
                     break;
 
                 case 0x65:
                     for (size_t i = 0; i <= chip8->inst.X; i++) {
                         chip8->V[i] = chip8->ram[chip8->I + i];
                     }
+                    chip8->I += chip8->inst.X + 1;
                     break;
 
                 default: 
@@ -1035,6 +1063,10 @@ int main(int argc, char** argv) {
         //Emulate CHIP8 Instruction
         for (uint32_t i = 0; i < config.insts_per_second / 60; i++) {
             emulate_instruction(&chip8, config);
+
+            // If drawing on CHIP8, only draw 1 sprite this frame (display wait)
+            if (chip8.inst.opcode >> 12 == 0xD)
+                break; 
         }
 
         const u_int64_t end_frame_time = SDL_GetPerformanceCounter();
