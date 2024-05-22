@@ -167,6 +167,10 @@ bool init_config_from_args(config_t* config, const int argc, char** argv) {
     };
     for (int i = 1; i < argc; i++) {
         (void)argv[i];
+        if (strncmp(argv[i], "--scale-factor", strlen("--scale-factor")) == 0) {
+            i = i + 1;
+            config->scale_factor = (uint32_t)strtol(argv[i], NULL, 10);
+        }
     }
     return true;
 }
@@ -359,6 +363,30 @@ void process_events(config_t *config, chip8_t *chip8) {
                     case SDLK_EQUALS:
                         // '=': Reset CHIP8 machine for the current ROM
                         init_chip8(chip8, config, chip8->rom_name);
+                        break;
+
+                    case SDLK_j:
+                        // 'j': Decrease color lerp rate
+                        if (config->color_lerp_rate > 0.1)
+                            config->color_lerp_rate -= 0.1;
+                        break;
+
+                    case SDLK_k:
+                        // 'k': Increase color lerp rate
+                        if (config->color_lerp_rate < 1.0)
+                            config->color_lerp_rate += 0.1;
+                        break;
+
+                    case SDLK_o:
+                        // 'o': Decrease Volume
+                        if (config->volume > 0)
+                            config->volume -= 500;
+                        break;
+
+                    case SDLK_p:
+                        // 'p': Increase Volume
+                        if (config->volume < INT16_MAX)
+                            config->volume += 500;
                         break;
 
                     //Map QWERTY keys to CHIP8 keypad
